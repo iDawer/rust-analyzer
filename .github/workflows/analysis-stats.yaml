@@ -1,0 +1,66 @@
+name: analysis-stats
+on:
+  push:
+    branches:
+      - bench
+
+jobs:
+  benchmark-self:
+    name: benchmark on self
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: rust-src
+
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Find commits
+        run: |
+          echo Excluding the last commit that adds this workflow file
+          echo "BRANCH_SHA=$(git rev-list -n1 HEAD^)" >> $GITHUB_ENV
+          echo "BASELINE_SHA=$(git rev-list --author=bors -n1 HEAD)" >> $GITHUB_ENV
+
+      - name: Switch to branch
+        run: |
+          git checkout ${{ env.BRANCH_SHA }}
+          git log -n1
+          cargo fetch --locked --target x86_64-unknown-linux-gnu
+
+      - name: Build branch
+        run: cargo xtask bb ${{ github.ref_name }}-${{ env.BRANCH_SHA }}
+
+      - name: Switch to baseline
+        run: |
+          git checkout ${{ env.BASELINE_SHA }}
+          git log -n1
+          cargo fetch --locked --target x86_64-unknown-linux-gnu
+
+      - name: Build baseline
+        run: cargo xtask bb baseline-${{ env.BASELINE_SHA }}
+
+      - name: Warm up caches in /target
+        run: ./target/rust-analyzer-baseline-${{ env.BASELINE_SHA }} -q analysis-stats --skip-inference .
+
+      - name: Analysis stats baseline
+        run: ./target/rust-analyzer-baseline-${{ env.BASELINE_SHA }} -q analysis-stats --memory-usage .
+
+      - name: Analysis stats branch
+        run: ./target/rust-analyzer-${{ github.ref_name }}-${{ env.BRANCH_SHA }} -q analysis-stats --memory-usage .
+
+      - name: Compress artifacts
+        run: tar -I 'zstd -T0 -12 --long' -vcf ra-bb-x86_64-unknown-linux-gnu.tar.zst ./target/rust-analyzer-*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ra-bb-x86_64-unknown-linux-gnu
+          # path: ./target/rust-analyzer-*
+          path: ra-bb-x86_64-unknown-linux-gnu.tar.zst
