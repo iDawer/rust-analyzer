@@ -187,7 +187,14 @@ impl ExprValidator {
                     // check the usefulness of each pattern as we added it
                     // to the matrix here.
                     let m_arm = match_check::MatchArm {
-                        pat: self.lower_pattern(&cx, arm.pat, db, &body, &mut has_lowering_errors),
+                        pat: self.lower_pattern(
+                            &cx,
+                            arm.pat,
+                            db,
+                            &body,
+                            &mut has_lowering_errors,
+                            match_expr,
+                        ),
                         has_guard: arm.guard.is_some(),
                     };
                     m_arms.push(m_arm);
@@ -225,8 +232,25 @@ impl ExprValidator {
         db: &dyn HirDatabase,
         body: &Body,
         have_errors: &mut bool,
+        match_expr: ExprId,
     ) -> &'p DeconstructedPat<'p> {
-        let mut patcx = match_check::PatCtxt::new(db, &self.infer, body);
+        let info = || {
+            use syntax::AstNode;
+            let source_map = db.body_with_source_map(self.owner).1;
+            let match_expr_text = source_map
+                .expr_syntax(match_expr)
+                .ok()
+                .and_then(|scrutinee_sptr| {
+                    let root = scrutinee_sptr.file_syntax(db.upcast());
+                    scrutinee_sptr.value.to_node(&root).syntax().parent()
+                })
+                .map(|node| node.to_string());
+            panic!(
+                "\nSPOTTED expression:\n{}",
+                match_expr_text.as_deref().unwrap_or("<synthesized expr>")
+            )
+        };
+        let mut patcx = match_check::PatCtxt::new(db, &self.infer, &info, body);
         let pattern = patcx.lower_pattern(pat);
         let pattern = cx.pattern_arena.alloc(DeconstructedPat::from_pat(cx, &pattern));
         if !patcx.errors.is_empty() {

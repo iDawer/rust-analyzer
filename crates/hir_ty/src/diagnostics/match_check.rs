@@ -86,13 +86,19 @@ pub(crate) enum PatKind {
 pub(crate) struct PatCtxt<'a> {
     db: &'a dyn HirDatabase,
     infer: &'a InferenceResult,
+    info: &'a dyn Fn(),
     body: &'a Body,
     pub(crate) errors: Vec<PatternError>,
 }
 
 impl<'a> PatCtxt<'a> {
-    pub(crate) fn new(db: &'a dyn HirDatabase, infer: &'a InferenceResult, body: &'a Body) -> Self {
-        Self { db, infer, body, errors: Vec::new() }
+    pub(crate) fn new(
+        db: &'a dyn HirDatabase,
+        infer: &'a InferenceResult,
+        info: &'a dyn Fn(),
+        body: &'a Body,
+    ) -> Self {
+        Self { db, infer, body, info, errors: Vec::new() }
     }
 
     pub(crate) fn lower_pattern(&mut self, pat: PatId) -> Pat {
@@ -227,7 +233,11 @@ impl<'a> PatCtxt<'a> {
             Some(variant_id) => {
                 if let VariantId::EnumVariantId(enum_variant) = variant_id {
                     let substs = match ty.kind(Interner) {
-                        TyKind::Adt(_, substs) | TyKind::FnDef(_, substs) => substs.clone(),
+                        TyKind::Adt(_, substs) => substs.clone(),
+                        TyKind::FnDef(_, substs) => {
+                            (self.info)();
+                            substs.clone()
+                        }
                         TyKind::Error => {
                             return PatKind::Wild;
                         }
