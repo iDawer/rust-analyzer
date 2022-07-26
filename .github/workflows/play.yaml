@@ -1,0 +1,33 @@
+name: play
+on:
+  push:
+    branches:
+      - play
+
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [self, ripgrep, diesel]
+        ra: [baseline, topic]
+
+        include:
+          - repository: rust-lang/rustc-perf
+            ref: c52ee623e231e7690a93be88d943016968c1036b
+            path: rustc-perf
+
+          - target: self
+            repository: ${{ github.repository }}
+            ref: ${{needs.build.outputs.baseline-sha-long}}
+            path: ra-src-baseline
+            target-repo-path: ra-src-baseline
+
+          - target: ripgrep
+            target-repo-path: rustc-perf/collector/benchmarks/ripgrep
+
+    steps:
+      - run: |
+          echo ${{matrix.target}} ${{matrix.ra}}
+          echo ${{matrix.repository}} ${{matrix.ref}} ${{matrix.path}}
+          echo ${{matrix.target-repo-path}}
